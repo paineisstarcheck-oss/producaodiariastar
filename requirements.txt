@@ -1,0 +1,8 @@
+streamlit
+pandas
+numpy
+matplotlib
+altair
+gspread
+
+oauth2client
