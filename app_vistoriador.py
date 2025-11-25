@@ -346,6 +346,12 @@ if isinstance(drange, tuple) and len(drange) == 2:
 else:
     start_d, end_d = min_d, max_d
 
+# --- DIAS ÚTEIS JÁ PASSADOS NO MÊS (SEG–SEX), IGUAL PARA TODOS
+start_month = date(ref_year, ref_month, 1)
+dias_passados_mes = int(
+    np.busday_count(start_month, end_d + timedelta(days=1), weekmask='Mon Tue Wed Thu Fri')
+)
+
 # Vistoriadores
 colV1, colV2 = st.columns([4, 2])
 with colV1:
@@ -417,16 +423,7 @@ grp = (view
 
 grp["LIQUIDO"] = grp["VISTORIAS"] - grp["REVISTORIAS"]
 
-# ---- DIAS ÚTEIS PASSADOS (GLOBAIS PARA TODOS NO MÊS/PERÍODO)
-if not view.empty:
-    # do primeiro dia do mês até o último dia do período selecionado (end_d)
-    start_month = date(ref_year, ref_month, 1)
-    dias_passados_mes = int(
-        np.busday_count(start_month, end_d + pd.Timedelta(days=1), weekmask="Mon Tue Wed Thu Fri")
-    )
-else:
-    dias_passados_mes = 0
-
+# ---- DIAS ÚTEIS PASSADOS (IGUAL PARA TODOS, SEG–SEX)
 grp["DIAS_PASSADOS"] = dias_passados_mes
 
 # ---- METAS: mês de referência do select (ym_sel)
