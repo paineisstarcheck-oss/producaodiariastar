@@ -7,7 +7,7 @@
 # ------------------------------------------------------------
 
 import os, re, json
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Tuple, List, Optional
 
 import streamlit as st
@@ -401,24 +401,6 @@ st.markdown(
 )
 
 # =========================
-# Função para DIAS ÚTEIS PASSADOS por vistoriador (igual TOKYO)
-# =========================
-def _is_workday(d):
-    return isinstance(d, date) and d.weekday() < 5
-
-def _calc_wd_passados(df_view: pd.DataFrame) -> pd.DataFrame:
-    if df_view.empty or "__DATA__" not in df_view.columns or "VISTORIADOR" not in df_view.columns:
-        return pd.DataFrame(columns=["VISTORIADOR","DIAS_PASSADOS"])
-    mask = df_view["__DATA__"].apply(_is_workday)
-    if not mask.any():
-        vists = df_view["VISTORIADOR"].dropna().unique()
-        return pd.DataFrame({"VISTORIADOR": vists, "DIAS_PASSADOS": np.zeros(len(vists), dtype=int)})
-    out = (df_view.loc[mask].groupby("VISTORIADOR")["__DATA__"].nunique()
-           .reset_index().rename(columns={"__DATA__":"DIAS_PASSADOS"}))
-    out["DIAS_PASSADOS"] = out["DIAS_PASSADOS"].astype(int)
-    return out
-
-# =========================
 # Resumo por Vistoriador  (com filtro FIXO/MÓVEL só aqui)
 # =========================
 st.markdown("<div class='section-title'>📋 Resumo por Vistoriador</div>", unsafe_allow_html=True)
@@ -435,10 +417,17 @@ grp = (view
 
 grp["LIQUIDO"] = grp["VISTORIAS"] - grp["REVISTORIAS"]
 
-# ---- DIAS ÚTEIS PASSADOS (por vistoriador)
-wd_passados = _calc_wd_passados(view)
-grp = grp.merge(wd_passados, on="VISTORIADOR", how="left").fillna({"DIAS_PASSADOS": 0})
-grp["DIAS_PASSADOS"] = grp["DIAS_PASSADOS"].astype(int)
+# ---- DIAS ÚTEIS PASSADOS (GLOBAIS PARA TODOS NO MÊS/PERÍODO)
+if not view.empty:
+    # do primeiro dia do mês até o último dia do período selecionado (end_d)
+    start_month = date(ref_year, ref_month, 1)
+    dias_passados_mes = int(
+        np.busday_count(start_month, end_d + pd.Timedelta(days=1), weekmask="Mon Tue Wed Thu Fri")
+    )
+else:
+    dias_passados_mes = 0
+
+grp["DIAS_PASSADOS"] = dias_passados_mes
 
 # ---- METAS: mês de referência do select (ym_sel)
 if not df_metas_all.empty:
@@ -461,7 +450,7 @@ for c in ["META_MENSAL","DIAS_UTEIS"]:
 grp["META_MENSAL"] = grp["META_MENSAL"].astype(int)
 grp["DIAS_UTEIS"]  = grp["DIAS_UTEIS"].astype(int)
 
-# ---- cálculos (baseados em LÍQUIDO, igual TOKYO)
+# ---- cálculos (baseados em LÍQUIDO)
 grp["META_DIA"]        = np.where(grp["DIAS_UTEIS"]>0, grp["META_MENSAL"]/grp["DIAS_UTEIS"], 0.0)
 grp["FALTANTE_MES"]    = np.maximum(grp["META_MENSAL"] - grp["LIQUIDO"], 0)
 grp["DIAS_RESTANTES"]  = np.maximum(grp["DIAS_UTEIS"] - grp["DIAS_PASSADOS"], 0)
