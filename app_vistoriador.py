@@ -103,11 +103,11 @@ def parse_date_any(x):
     for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
         try:
             return datetime.strptime(s, fmt).date()
-        except:
+        except Exception:
             pass
     try:
         return pd.to_datetime(s).date()
-    except:
+    except Exception:
         return pd.NaT
 
 def _upper_strip(x):
@@ -125,7 +125,7 @@ def infer_year_month_from_sheet(sh_title: str, df_data: pd.DataFrame) -> Optiona
                 dd = min(d)
                 if isinstance(dd, date):
                     return f"{dd.year}-{dd.month:02d}"
-            except:
+            except Exception:
                 pass
     return None
 
@@ -140,10 +140,9 @@ def read_one_sheet(gs_client, sheet_id: str) -> Tuple[pd.DataFrame, pd.DataFrame
     data = pd.DataFrame(ws.get_all_records())
 
     if not data.empty:
-        # normaliza cabeçalho
         data.columns = [c.strip().upper() for c in data.columns]
 
-        # --- deduplicação segura usando Nº (quando existir) ---
+        # --- deduplicação usando Nº, se existir ---
         col_nr = None
         for cand in ["Nº", "N°", "NR", "NRO", "NUMERO", "NÚMERO", "NO", "N"]:
             if cand in data.columns:
@@ -177,7 +176,7 @@ def read_one_sheet(gs_client, sheet_id: str) -> Tuple[pd.DataFrame, pd.DataFrame
         else:
             data["VISTORIADOR"] = data[col_dig].map(_upper_strip)
 
-        # revistoria (ordem por data + chassi)
+        # revistoria: por CHASSI (toda vistoria adicional do mesmo veículo conta como rev)
         data = data.sort_values(["__DATA__", col_chas], kind="mergesort").reset_index(drop=True)
         data["__ORD__"] = data.groupby(col_chas).cumcount()
         data["IS_REV"] = (data["__ORD__"] >= 1).astype(int)
@@ -238,10 +237,12 @@ def load_ids_from_index(gs_client) -> List[str]:
         norm = [{str(k).strip().upper(): r[k] for k in r} for r in rows]
         ativos = [r for r in norm if _yes(r.get("ATIVO", "S"))]
         ids = []
+        seen = set()
         for r in ativos:
             sid = extract_sheet_id(str(r.get("URL", "")))
-            if sid:
+            if sid and sid not in seen:
                 ids.append(sid)
+                seen.add(sid)
         return ids
     except Exception:
         return []
@@ -335,7 +336,7 @@ label_map = {f"{m[5:]}/{m[:4]}": m for m in ym_all}
 sel_label = st.selectbox(
     "Mês de referência",
     options=list(label_map.keys()),
-    index=len(ym_all) - 1  # último mês disponível
+    index=len(ym_all) - 1
 )
 ym_sel = label_map[sel_label]
 ref_year, ref_month = int(ym_sel[:4]), int(ym_sel[5:7])
@@ -377,19 +378,15 @@ with colV2:
 # =========================
 view = df.copy()
 
-# filtro por unidade
 if st.session_state.unids_tmp:
     view = view[view[col_unid].isin(st.session_state.unids_tmp)]
 
-# filtro pelo mês selecionado
 view = view[view["__DATA__"].apply(
     lambda d: isinstance(d, date) and d.year == ref_year and d.month == ref_month
 )]
 
-# filtro pelo período dentro do mês
 view = view[(view["__DATA__"] >= start_d) & (view["__DATA__"] <= end_d)]
 
-# filtro por vistoriador
 if st.session_state.vists_tmp:
     view = view[view["VISTORIADOR"].isin(st.session_state.vists_tmp)]
 
@@ -418,7 +415,7 @@ st.markdown(
 )
 
 # =========================
-# Resumo por Vistoriador  (com filtro FIXO/MÓVEL só aqui)
+# Resumo por Vistoriador
 # =========================
 st.markdown("<div class='section-title'>📋 Resumo por Vistoriador</div>", unsafe_allow_html=True)
 
@@ -433,11 +430,8 @@ grp = (view
        .reset_index())
 
 grp["LIQUIDO"] = grp["VISTORIAS"] - grp["REVISTORIAS"]
-
-# ---- DIAS ÚTEIS PASSADOS (IGUAL PARA TODOS, SEG–SEX)
 grp["DIAS_PASSADOS"] = dias_passados_mes
 
-# ---- METAS: mês de referência do select (ym_sel)
 if not df_metas_all.empty:
     metas_ref = df_metas_all[df_metas_all["__YM__"] == ym_sel].copy()
 else:
@@ -458,7 +452,6 @@ for c in ["META_MENSAL","DIAS_UTEIS"]:
 grp["META_MENSAL"] = grp["META_MENSAL"].astype(int)
 grp["DIAS_UTEIS"]  = grp["DIAS_UTEIS"].astype(int)
 
-# ---- cálculos (baseados em LÍQUIDO)
 grp["META_DIA"]        = np.where(grp["DIAS_UTEIS"]>0, grp["META_MENSAL"]/grp["DIAS_UTEIS"], 0.0)
 grp["FALTANTE_MES"]    = np.maximum(grp["META_MENSAL"] - grp["LIQUIDO"], 0)
 grp["DIAS_RESTANTES"]  = np.maximum(grp["DIAS_UTEIS"] - grp["DIAS_PASSADOS"], 0)
@@ -467,12 +460,11 @@ grp["MEDIA_DIA_ATUAL"] = np.where(grp["DIAS_PASSADOS"]>0, grp["LIQUIDO"]/grp["DI
 grp["PROJECAO_MES"]    = (grp["LIQUIDO"] + grp["MEDIA_DIA_ATUAL"] * grp["DIAS_RESTANTES"]).round(0)
 grp["TENDENCIA_%"]     = np.where(grp["META_MENSAL"]>0, (grp["PROJECAO_MES"]/grp["META_MENSAL"])*100, np.nan)
 
-# ---- NORMALIZAÇÃO DO TIPO + FILTRO SÓ PARA ESTA TABELA
 grp["TIPO_NORM"] = grp.get("TIPO","").astype(str).str.upper().str.replace("MOVEL","MÓVEL").str.strip()
 grp.loc[grp["TIPO_NORM"] == "", "TIPO_NORM"] = "—"
 
 tipo_options = [t for t in ["FIXO","MÓVEL"] if t in grp["TIPO_NORM"].unique().tolist()]
-if "—" in grp["TIPO_NORM"].unique():  # metas sem tipo
+if "—" in grp["TIPO_NORM"].unique():
     tipo_options.append("—")
 
 sel_tipos = st.multiselect(
@@ -482,11 +474,8 @@ sel_tipos = st.multiselect(
     key="resumo_tipo_filter"
 )
 grp_tbl = grp if not sel_tipos else grp[grp["TIPO_NORM"].isin(sel_tipos)]
-
-# ---- ordenação
 grp_tbl = grp_tbl.sort_values(["PROJECAO_MES","LIQUIDO"], ascending=[False, False])
 
-# ---- formatação (com emojis)
 fmt = grp_tbl.copy()
 
 def chip_tend(p):
@@ -501,7 +490,7 @@ def chip_tend(p):
 def chip_nec(x):
     try:
         v = float(x)
-    except:
+    except Exception:
         return "—"
     return "0 ✅" if v <= 0 else f"{int(round(v))} 🔥"
 
@@ -614,7 +603,7 @@ else:
         st.dataframe(dup, use_container_width=True, hide_index=True)
 
 # =========================
-# 🧮 CONSOLIDADO DO MÊS + RANKING MENSAL (TOP/BOTTOM)
+# 🧮 CONSOLIDADO DO MÊS + RANKING MENSAL
 # =========================
 TOP_LABEL = "TOP BOX"
 BOTTOM_LABEL = "BOTTOM BOX"
@@ -740,7 +729,7 @@ else:
     render_ranking(base_mes[base_mes["TIPO"].isin(["MÓVEL","MOVEL"])], "vistoriadores MÓVEL")
 
 # =========================
-# 📅 RANKING DO DIA POR VISTORIADOR (TOP/BOTTOM)
+# 📅 RANKING DO DIA POR VISTORIADOR
 # =========================
 TOP_LABEL = "TOP BOX"
 BOTTOM_LABEL = "BOTTOM BOX"
@@ -772,8 +761,8 @@ else:
     view_dia = view[view["__DATA__"] == used_day].copy()
 
     prod_dia = (view_dia.groupby("VISTORIADOR", dropna=False)
-                .agg(VISTORIAS_DIA=("IS_REV", "size"),
-                     REVISTORIAS_DIA=("IS_REV", "sum")).reset_index())
+                .agg(VISTORIAS_DIA=("IS_REV","size"),
+                     REVISTORIAS_DIA=("IS_REV","sum")).reset_index())
     prod_dia["LIQUIDO_DIA"] = prod_dia["VISTORIAS_DIA"] - prod_dia["REVISTORIAS_DIA"]
 
     ym_day = f"{used_day.year}-{used_day.month:02d}"
