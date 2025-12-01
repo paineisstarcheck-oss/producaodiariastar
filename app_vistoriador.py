@@ -837,3 +837,5 @@ else:
     st.markdown("#### 🚗 MÓVEL")
     render_ranking_dia(base_dia[base_dia["TIPO"].isin(["MÓVEL","MOVEL"])], "vistoriadores MÓVEL")
 
+
+
