@@ -168,10 +168,10 @@ def read_one_sheet(gs_client, sheet_id: str) -> Tuple[pd.DataFrame, pd.DataFrame
         else:
             data["VISTORIADOR"] = data[col_dig].map(_upper_strip)
 
-        # revistoria: por CHASSI + VISTORIADOR
-        data = data.sort_values(["__DATA__", col_chas, "VISTORIADOR"], kind="mergesort").reset_index(drop=True)
-        data["__ORD__"] = data.groupby([col_chas, "VISTORIADOR"]).cumcount()
-        data["IS_REV"] = (data["__ORD__"] >= 1).astype(int)
+       # revistoria: por CHASSI (igual VELOX)
+data = data.sort_values(["__DATA__", col_chas], kind="mergesort").reset_index(drop=True)
+data["__ORD__"] = data.groupby(col_chas).cumcount()
+data["IS_REV"] = (data["__ORD__"] >= 1).astype(int)
 
         # limpa unidades inválidas
         BAN_UNIDS = {"POSTO CÓDIGO", "POSTO CODIGO", "CÓDIGO", "CODIGO", "", "—", "NAN"}
