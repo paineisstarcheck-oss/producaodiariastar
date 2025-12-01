@@ -100,16 +100,14 @@ def parse_date_any(x):
     if pd.isna(x) or x == "":
         return pd.NaT
     s = str(x).strip()
-    # tenta datas em texto
     for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
         try:
             return datetime.strptime(s, fmt).date()
-        except Exception:
+        except:
             pass
-    # tentativa genérica
     try:
         return pd.to_datetime(s).date()
-    except Exception:
+    except:
         return pd.NaT
 
 def _upper_strip(x):
@@ -127,7 +125,7 @@ def infer_year_month_from_sheet(sh_title: str, df_data: pd.DataFrame) -> Optiona
                 dd = min(d)
                 if isinstance(dd, date):
                     return f"{dd.year}-{dd.month:02d}"
-            except Exception:
+            except:
                 pass
     return None
 
@@ -142,7 +140,18 @@ def read_one_sheet(gs_client, sheet_id: str) -> Tuple[pd.DataFrame, pd.DataFrame
     data = pd.DataFrame(ws.get_all_records())
 
     if not data.empty:
+        # normaliza cabeçalho
         data.columns = [c.strip().upper() for c in data.columns]
+
+        # --- deduplicação segura usando Nº (quando existir) ---
+        col_nr = None
+        for cand in ["Nº", "N°", "NR", "NRO", "NUMERO", "NÚMERO", "NO", "N"]:
+            if cand in data.columns:
+                col_nr = cand
+                break
+        if col_nr is not None:
+            data = data.drop_duplicates(subset=[col_nr]).copy()
+
         col_unid  = "UNIDADE"   if "UNIDADE"   in data.columns else None
         col_data  = "DATA"      if "DATA"      in data.columns else None
         col_chas  = "CHASSI"    if "CHASSI"    in data.columns else None
@@ -168,9 +177,9 @@ def read_one_sheet(gs_client, sheet_id: str) -> Tuple[pd.DataFrame, pd.DataFrame
         else:
             data["VISTORIADOR"] = data[col_dig].map(_upper_strip)
 
-        # revistoria: por CHASSI + VISTORIADOR
-        data = data.sort_values(["__DATA__", col_chas, "VISTORIADOR"], kind="mergesort").reset_index(drop=True)
-        data["__ORD__"] = data.groupby([col_chas, "VISTORIADOR"]).cumcount()
+        # revistoria (ordem por data + chassi)
+        data = data.sort_values(["__DATA__", col_chas], kind="mergesort").reset_index(drop=True)
+        data["__ORD__"] = data.groupby(col_chas).cumcount()
         data["IS_REV"] = (data["__ORD__"] >= 1).astype(int)
 
         # limpa unidades inválidas
@@ -229,12 +238,10 @@ def load_ids_from_index(gs_client) -> List[str]:
         norm = [{str(k).strip().upper(): r[k] for k in r} for r in rows]
         ativos = [r for r in norm if _yes(r.get("ATIVO", "S"))]
         ids = []
-        seen = set()
         for r in ativos:
             sid = extract_sheet_id(str(r.get("URL", "")))
-            if sid and sid not in seen:
+            if sid:
                 ids.append(sid)
-                seen.add(sid)
         return ids
     except Exception:
         return []
@@ -265,16 +272,6 @@ if len(all_df) == 0:
     st.stop()
 
 df = pd.concat(all_df, ignore_index=True)
-
-# remove possíveis duplicados exatos (mesma data + chassi + vistoriador)
-dedup_subset = [c for c in ["__DATA__", "CHASSI", "VISTORIADOR"] if c in df.columns]
-if len(dedup_subset) == 3:
-    before = len(df)
-    df = df.drop_duplicates(subset=dedup_subset).copy()
-    removed = before - len(df)
-    if removed > 0:
-        st.caption(f"Removidas {removed} linhas duplicadas de produção (mesma data, chassi e vistoriador).")
-
 df_metas_all = pd.concat(all_metas, ignore_index=True) if len(all_metas) else pd.DataFrame()
 
 # =========================
@@ -504,7 +501,7 @@ def chip_tend(p):
 def chip_nec(x):
     try:
         v = float(x)
-    except Exception:
+    except:
         return "—"
     return "0 ✅" if v <= 0 else f"{int(round(v))} 🔥"
 
@@ -775,8 +772,8 @@ else:
     view_dia = view[view["__DATA__"] == used_day].copy()
 
     prod_dia = (view_dia.groupby("VISTORIADOR", dropna=False)
-                .agg(VISTORIAS_DIA=("IS_REV","size"),
-                     REVISTORIAS_DIA=("IS_REV","sum")).reset_index())
+                .agg(VISTORIAS_DIA=("IS_REV", "size"),
+                     REVISTORIAS_DIA=("IS_REV", "sum")).reset_index())
     prod_dia["LIQUIDO_DIA"] = prod_dia["VISTORIAS_DIA"] - prod_dia["REVISTORIAS_DIA"]
 
     ym_day = f"{used_day.year}-{used_day.month:02d}"
@@ -850,5 +847,4 @@ else:
 
     st.markdown("#### 🚗 MÓVEL")
     render_ranking_dia(base_dia[base_dia["TIPO"].isin(["MÓVEL","MOVEL"])], "vistoriadores MÓVEL")
-
 
