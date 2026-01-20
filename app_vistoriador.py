@@ -434,25 +434,25 @@ else:
                         UNIDADE=("UNIDADE", lambda s: s.dropna().iloc[0] if s.dropna().size else ""),
                         TIPO=("TIPO", lambda s: s.dropna().iloc[0] if s.dropna().size else ""),
                         META_MENSAL=("META_MENSAL", "sum"),
-                        DIAS_UTEIS=("DIAS_UTEIS", "max") if "DIAS_UTEIS" in metas_ref.columns else ("META_MENSAL", lambda s: 0),
+                        DIAS_ÚTEIS=("DIAS_ÚTEIS", "max") if "DIAS_ÚTEIS" in metas_ref.columns else ("META_MENSAL", lambda s: 0),
                      )
                      .reset_index())
     else:
-        metas_ref = pd.DataFrame(columns=["VISTORIADOR", "UNIDADE", "TIPO", "META_MENSAL", "DIAS_UTEIS"])
+        metas_ref = pd.DataFrame(columns=["VISTORIADOR", "UNIDADE", "TIPO", "META_MENSAL", "DIAS_ÚTEIS"])
 
     # merge metas
-    grp = grp.merge(metas_ref[["VISTORIADOR", "UNIDADE", "TIPO", "META_MENSAL", "DIAS_UTEIS"]],
+    grp = grp.merge(metas_ref[["VISTORIADOR", "UNIDADE", "TIPO", "META_MENSAL", "DIAS_ÚTEIS"]],
                     on="VISTORIADOR", how="left")
 
     grp["UNIDADE"] = grp["UNIDADE"].fillna("")
     grp["TIPO"] = grp["TIPO"].fillna("")
     grp["META_MENSAL"] = pd.to_numeric(grp.get("META_MENSAL", 0), errors="coerce").fillna(0).astype(int)
-    grp["DIAS_UTEIS"] = pd.to_numeric(grp.get("DIAS_UTEIS", 0), errors="coerce").fillna(0).astype(int)
+    grp["DIAS_ÚTEIS"] = pd.to_numeric(grp.get("DIAS_ÚTEIS", 0), errors="coerce").fillna(0).astype(int)
 
     # cálculos
-    grp["META_DIA"] = np.where(grp["DIAS_UTEIS"] > 0, grp["META_MENSAL"] / grp["DIAS_UTEIS"], 0.0)
+    grp["META_DIA"] = np.where(grp["DIAS_ÚTEIS"] > 0, grp["META_MENSAL"] / grp["DIAS_ÚTEIS"], 0.0)
     grp["FALTANTE_MES"] = np.maximum(grp["META_MENSAL"] - grp["LIQUIDO"], 0)
-    grp["DIAS_RESTANTES"] = np.maximum(grp["DIAS_UTEIS"] - grp["DIAS_PASSADOS"], 0)
+    grp["DIAS_RESTANTES"] = np.maximum(grp["DIAS_ÚTEIS"] - grp["DIAS_PASSADOS"], 0)
     grp["NECESSIDADE_DIA"] = np.where(grp["DIAS_RESTANTES"] > 0, grp["FALTANTE_MES"] / grp["DIAS_RESTANTES"], 0.0)
     grp["MEDIA_DIA_ATUAL"] = np.where(grp["DIAS_PASSADOS"] > 0, grp["VISTORIAS"] / grp["DIAS_PASSADOS"], 0.0)
     grp["PROJECAO_MES"] = (grp["VISTORIAS"] + grp["MEDIA_DIA_ATUAL"] * grp["DIAS_RESTANTES"]).round(0)
@@ -495,7 +495,7 @@ else:
 
     fmt["TIPO"] = fmt["TIPO_NORM"].map({"FIXO": "🏢 FIXO", "MÓVEL": "🚗 MÓVEL"}).fillna("—")
     fmt["META_MENSAL"]      = fmt["META_MENSAL"].map(lambda x: f"{int(x):,}".replace(",", "."))
-    fmt["DIAS_UTEIS"]       = fmt["DIAS_UTEIS"].map(lambda x: f"{int(x)}")
+    fmt["DIAS_ÚTEIS"]       = fmt["DIAS_ÚTEIS"].map(lambda x: f"{int(x)}")
     fmt["META_DIA"]         = fmt["META_DIA"].map(lambda x: f"{x:,.1f}".replace(",", "X").replace(".", ",").replace("X", "."))
     fmt["VISTORIAS"]        = fmt["VISTORIAS"].map(lambda x: f"{int(x)}")
     fmt["REVISTORIAS"]      = fmt["REVISTORIAS"].map(lambda x: f"{int(x)}")
@@ -507,7 +507,7 @@ else:
 
     cols_show = [
         "VISTORIADOR", "UNIDADE", "TIPO",
-        "META_MENSAL", "DIAS_UTEIS", "META_DIA",
+        "META_MENSAL", "DIAS_ÚTEIS", "META_DIA",
         "VISTORIAS", "REVISTORIAS", "LIQUIDO",
         "FALTANTE_MES", "NECESSIDADE_DIA", "TENDÊNCIA", "PROJECAO_MES"
     ]
