@@ -88,7 +88,7 @@ client = make_client()
 
 
 # ------------------ SECRETS: IDs ------------------
-PROD_INDEX_ID = st.secrets.get("velox_index_sheet_id", "").strip()
+PROD_INDEX_ID = st.secrets.get("starcheck_index_sheet_id", "").strip()
 if not PROD_INDEX_ID:
     st.error("Faltou `prod_index_sheet_id` no secrets.toml")
     st.stop()
